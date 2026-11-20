@@ -1,0 +1,28 @@
+{
+  "name": "helpdesk",
+  "private": true,
+  "workspaces": ["client", "server", "core"],
+  "scripts": {
+    "dev": "bun start-dev.ts",
+    "db": "bun start-db.ts",
+    "db:migrate": "bun init-db.ts",
+    "db:seed": "bun seed-pglite.ts",
+    "db:test": "bun start-test-db.ts",
+    "db:test:migrate": "bun init-test-db.ts",
+    "db:test:seed": "bun seed-test-db.ts",
+    "dev:server": "bun --filter server dev",
+    "dev:client": "bun --filter client dev",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui --workers=1",
+    "test:e2e:headed": "playwright test --headed"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@types/node": "^25.2.3",
+    "dotenv": "^17.3.1"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.16",
+    "@electric-sql/pglite-socket": "^0.2.19"
+  }
+}
