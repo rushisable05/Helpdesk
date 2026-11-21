@@ -80,6 +80,7 @@ export function polishReplyLocally(
   // Strip existing sign-off if typed
   cleaned = cleaned.replace(/(best\s+regards|regards|sincerely|thanks|thank\s+you|cheers)[\s\S]*$/i, "");
   cleaned = cleaned.replace(/https?:\/\/codewithmosh\.com/gi, "");
+  cleaned = cleaned.replace(/https?:\/\/localhost:5173\/?/gi, "");
   cleaned = cleaned.trim();
 
   if (/^(ok|okay|done|fixed|resolved)\.?$/i.test(cleaned)) {
@@ -116,7 +117,7 @@ export function polishReplyLocally(
     `${cleaned}\n\n` +
     `Best regards,\n` +
     `${agentName}\n` +
-    `https://codewithmosh.com`
+    `http://localhost:5173/`
   );
 }
 
@@ -216,7 +217,7 @@ router.post("/polish", requireAuth, async (req, res) => {
           "Preserve the original meaning and keep the response concise. " +
           "Return only the improved text with no preamble or explanation. " +
           `Address the customer by their name: ${customerName}. ` +
-          `End the reply with a sign-off using the agent's name: ${agentName}, and include the link https://codewithmosh.com on its own line after the sign-off.`,
+          `End the reply with a sign-off using the agent's name: ${agentName}, and include the link http://localhost:5173/ on its own line after the sign-off.`,
         prompt: data.body,
       });
       polishedText = text;
