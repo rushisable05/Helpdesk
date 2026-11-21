@@ -7,6 +7,7 @@
     "db": "bun start-db.ts",
     "db:migrate": "bun init-db.ts",
     "db:seed": "bun seed-pglite.ts",
+    "db:seed:100": "bun seed-100-tickets.ts",
     "db:test": "bun start-test-db.ts",
     "db:test:migrate": "bun init-test-db.ts",
     "db:test:seed": "bun seed-test-db.ts",
