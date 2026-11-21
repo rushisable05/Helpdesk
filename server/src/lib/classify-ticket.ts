@@ -28,7 +28,7 @@ export async function registerClassifyWorker(boss: PgBoss): Promise<void> {
 
     try {
       const { text } = await generateText({
-        model: openai("gpt-5-nano"),
+        model: openai(process.env.OPENAI_MODEL || "gpt-4o-mini"),
         system:
           "You are a support ticket classifier. " +
           "Classify the ticket into exactly one of these categories: " +
