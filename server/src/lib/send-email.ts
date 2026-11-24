@@ -43,6 +43,25 @@ export async function registerSendEmailWorker(boss: PgBoss): Promise<void> {
 }
 
 export async function sendEmailJob(data: SendEmailJobData): Promise<void> {
+  // If background queue is in local mode and SendGrid credentials are provided, dispatch directly
+  const isQueueEnabled = process.env.ENABLE_JOB_QUEUE === "true";
+  if (!isQueueEnabled && process.env.SENDGRID_API_KEY && process.env.SENDGRID_FROM_EMAIL) {
+    try {
+      sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+      await sgMail.send({
+        to: data.to,
+        from: process.env.SENDGRID_FROM_EMAIL,
+        subject: data.subject,
+        text: data.body,
+        ...(data.bodyHtml && { html: data.bodyHtml }),
+      });
+      console.log(`✉️ [SendGrid Direct] Outbound email sent to ${data.to} — subject: "${data.subject}"`);
+      return;
+    } catch (error: any) {
+      console.error("❌ [SendGrid Direct] Failed to send email:", error?.response?.body || error?.message || error);
+    }
+  }
+
   const { boss } = await import("./queue");
   await boss.send(QUEUE_NAME, data);
 }
