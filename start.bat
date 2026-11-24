@@ -9,17 +9,17 @@ set "PATH=%USERPROFILE%\.bun\bin;%PATH%"
 cd /d "%~dp0"
 
 echo [1/3] Launching Embedded PostgreSQL Database (Port 5432)...
-start "Helpdesk PostgreSQL (Port 5432)" cmd /k "set PATH=%USERPROFILE%\.bun\bin;%%PATH%% && bun run db"
+start "Helpdesk PostgreSQL (Port 5432)" /d "%~dp0" cmd /k "cd /d ""%~dp0"" && set PATH=%USERPROFILE%\.bun\bin;%%PATH%% && bun run db"
 
 ping 127.0.0.1 -n 4 >nul
 
 echo [2/3] Launching Express 5 Backend API (Port 3000)...
-start "Helpdesk Server API (Port 3000)" cmd /k "set PATH=%USERPROFILE%\.bun\bin;%%PATH%% && bun run dev:server"
+start "Helpdesk Server API (Port 3000)" /d "%~dp0" cmd /k "cd /d ""%~dp0"" && set PATH=%USERPROFILE%\.bun\bin;%%PATH%% && bun run dev:server"
 
 ping 127.0.0.1 -n 3 >nul
 
 echo [3/3] Launching React 19 Frontend Client (Port 5173)...
-start "Helpdesk Client (Port 5173)" cmd /k "set PATH=%USERPROFILE%\.bun\bin;%%PATH%% && bun run dev:client"
+start "Helpdesk Client (Port 5173)" /d "%~dp0" cmd /k "cd /d ""%~dp0"" && set PATH=%USERPROFILE%\.bun\bin;%%PATH%% && bun run dev:client"
 
 ping 127.0.0.1 -n 4 >nul
 

@@ -8,17 +8,17 @@ $env:PATH = "$bunPath;$env:PATH"
 Set-Location $PSScriptRoot
 
 Write-Host "`n[1/3] Starting Embedded PostgreSQL Database (Port 5432)..." -ForegroundColor Yellow
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "`$env:PATH='$bunPath;' + `$env:PATH; bun run db"
+Start-Process powershell -WorkingDirectory $PSScriptRoot -ArgumentList "-NoExit", "-Command", "`$env:PATH='$bunPath;' + `$env:PATH; Set-Location '$PSScriptRoot'; bun run db"
 
 Start-Sleep -Seconds 3
 
 Write-Host "[2/3] Starting Express 5 Backend API (Port 3000)..." -ForegroundColor Yellow
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "`$env:PATH='$bunPath;' + `$env:PATH; bun run dev:server"
+Start-Process powershell -WorkingDirectory $PSScriptRoot -ArgumentList "-NoExit", "-Command", "`$env:PATH='$bunPath;' + `$env:PATH; Set-Location '$PSScriptRoot'; bun run dev:server"
 
 Start-Sleep -Seconds 2
 
 Write-Host "[3/3] Starting React 19 Frontend Client (Port 5173)..." -ForegroundColor Yellow
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "`$env:PATH='$bunPath;' + `$env:PATH; bun run dev:client"
+Start-Process powershell -WorkingDirectory $PSScriptRoot -ArgumentList "-NoExit", "-Command", "`$env:PATH='$bunPath;' + `$env:PATH; Set-Location '$PSScriptRoot'; bun run dev:client"
 
 Start-Sleep -Seconds 3
 
