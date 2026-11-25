@@ -80,9 +80,10 @@ app.all("/api/auth/{*any}", authLimiter, (req, res, next) => {
 
 app.use(express.json());
 
-// Root endpoint for browser & status check
-app.get("/", (_req, res) => {
-  res.send(`
+// Root endpoint for browser & status check (development only; production serves React client)
+if (!isProduction) {
+  app.get("/", (_req, res) => {
+    res.send(`
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -121,7 +122,8 @@ app.get("/", (_req, res) => {
     </body>
     </html>
   `);
-});
+  });
+}
 
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });
