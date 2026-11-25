@@ -2,8 +2,8 @@ import { spawn } from "child_process";
 import path from "path";
 import fs from "fs";
 import net from "net";
-import { PGlite } from "@electric-sql/pglite";
 import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
+import { openOrRecoverPGlite } from "./db-helper";
 
 function isPortInUse(port: number, host = "127.0.0.1"): Promise<boolean> {
   return new Promise((resolve) => {
@@ -36,14 +36,9 @@ async function main() {
   if (alreadyRunning) {
     console.log("✅ [DB] Database is already running on 127.0.0.1:5432. Reusing existing instance.");
   } else {
-    const pidFile = path.join(dbPath, "postmaster.pid");
-    if (fs.existsSync(pidFile)) {
-      try { fs.unlinkSync(pidFile); } catch {}
-    }
-
     console.log("⚡ Starting Embedded PostgreSQL (Port 5432)...");
     try {
-      db = await PGlite.create(dbPath);
+      db = await openOrRecoverPGlite(dbPath);
       dbServer = new PGLiteSocketServer({ db, port: 5432, host: "127.0.0.1" });
       await dbServer.start();
       console.log("✅ [DB] Database listening on 127.0.0.1:5432");

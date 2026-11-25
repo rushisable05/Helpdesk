@@ -42,16 +42,18 @@ export async function seed100Tickets(targetDbPath?: string) {
       console.log(`✅ Admin user ensured: ${email}`);
     }
 
-    // 2. Ensure AI Agent exists
-    const aiCheck = await db.query('SELECT id FROM "user" WHERE id = $1', [AI_AGENT_ID]);
-    if (aiCheck.rows.length === 0) {
-      await db.query(
-        `INSERT INTO "user" (id, name, email, "emailVerified", role, "createdAt", "updatedAt")
-         VALUES ($1, 'AI Assistant', 'ai@helpdesk.local', false, 'agent', $2, $2)`,
-        [AI_AGENT_ID, now.toISOString()]
-      );
-      console.log(`✅ AI Agent ensured: ${AI_AGENT_ID}`);
+    // 2. Ensure AI Agent exists (both ai-agent and ai_agent for compatibility)
+    for (const agentId of ['ai-agent', 'ai_agent']) {
+      const check = await db.query('SELECT id FROM "user" WHERE id = $1', [agentId]);
+      if (check.rows.length === 0) {
+        await db.query(
+          `INSERT INTO "user" (id, name, email, "emailVerified", role, "createdAt", "updatedAt")
+           VALUES ($1, 'AI Assistant', $2, false, 'agent', $3, $3)`,
+          [agentId, `${agentId}@helpdesk.local`, now.toISOString()]
+        );
+      }
     }
+    console.log(`✅ AI Agents ensured: ai-agent & ai_agent`);
 
     // 3. Clear existing replies & tickets to have a clean, consistent 100 tickets set
     await db.query('DELETE FROM "reply"');

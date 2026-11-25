@@ -59,15 +59,56 @@ export async function registerClassifyWorker(boss: PgBoss): Promise<void> {
   });
 }
 
+export function classifyLocally(subject: string, body: string): TicketCategory {
+  const text = `${subject} ${body}`.toLowerCase();
+  if (/\b(refund|money\s*back|chargeback|cancel|billing|payment)\b/.test(text)) {
+    return "refund_request";
+  }
+  if (/\b(login|password|error|bug|video|play|download|access|crash|broken|issue|not working)\b/.test(text)) {
+    return "technical_question";
+  }
+  return "general_question";
+}
+
 export async function sendClassifyJob(ticket: {
   id: number;
   subject: string;
   body: string;
 }): Promise<void> {
-  const { boss } = await import("./queue");
-  await boss.send(QUEUE_NAME, {
-    ticketId: ticket.id,
-    subject: ticket.subject,
-    body: ticket.body,
+  if (process.env.ENABLE_JOB_QUEUE === "true") {
+    const { boss } = await import("./queue");
+    await boss.send(QUEUE_NAME, {
+      ticketId: ticket.id,
+      subject: ticket.subject,
+      body: ticket.body,
+    });
+    return;
+  }
+
+  let category: TicketCategory = classifyLocally(ticket.subject, ticket.body);
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const { text } = await generateText({
+        model: openai(process.env.OPENAI_MODEL || "gpt-4o-mini"),
+        system:
+          "You are a support ticket classifier. " +
+          "Classify the ticket into exactly one of these categories: " +
+          `${ticketCategories.join(", ")}. ` +
+          "Return only the category value with no extra text.",
+        prompt: `Subject: ${ticket.subject}\n\nBody: ${ticket.body}`,
+      });
+      const candidate = text.trim() as TicketCategory;
+      if (ticketCategories.includes(candidate)) {
+        category = candidate;
+      }
+    } catch (error) {
+      console.warn(`OpenAI classify fallback to local for ticket ${ticket.id}:`, error);
+    }
+  }
+
+  await prisma.ticket.update({
+    where: { id: ticket.id },
+    data: { category },
   });
+  console.log(`🏷️ [AI Classify] Ticket #${ticket.id} classified as "${category}"`);
 }

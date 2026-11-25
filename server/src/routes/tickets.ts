@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import { requireAuth } from "../middleware/require-auth";
 import { validate } from "../lib/validate";
 import { parseId } from "../lib/parse-id";
@@ -6,6 +7,58 @@ import { ticketListQuerySchema, updateTicketSchema } from "core/schemas/tickets.
 import prisma from "../db";
 import type { Prisma } from "../generated/prisma/client";
 import { AI_AGENT_ID } from "core/constants/ai-agent.ts";
+import { sendClassifyJob } from "../lib/classify-ticket";
+import { sendAutoResolveJob } from "../lib/auto-resolve-ticket";
+
+const bookEmailTicketSchema = z.object({
+  senderName: z.string().trim().min(1, "Name is required"),
+  senderEmail: z.string().trim().email("Valid email is required"),
+  subject: z.string().trim().min(1, "Subject is required"),
+  body: z.string().trim().min(1, "Message is required"),
+});
+
+let statsFnUpdated = false;
+async function ensureStatsFunction() {
+  if (statsFnUpdated) return;
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE OR REPLACE FUNCTION get_ticket_stats(ai_agent_id TEXT)
+      RETURNS TABLE (
+        "totalTickets"      BIGINT,
+        "openTickets"       BIGINT,
+        "resolvedByAI"      BIGINT,
+        "aiResolutionRate"  DOUBLE PRECISION,
+        "avgResolutionTime" DOUBLE PRECISION
+      )
+      LANGUAGE sql STABLE
+      AS $$
+        WITH counts AS (
+          SELECT
+            COUNT(*)                                                         AS total_tickets,
+            COUNT(*) FILTER (WHERE status IN ('new', 'open', 'processing'))  AS open_tickets,
+            COUNT(*) FILTER (WHERE status = 'resolved' AND "assignedToId" IN (ai_agent_id, 'ai_agent', 'ai-agent')) AS resolved_by_ai,
+            COUNT(*) FILTER (WHERE status = 'resolved')                      AS total_resolved,
+            AVG(EXTRACT(EPOCH FROM ("updatedAt" - "createdAt"))) FILTER (WHERE status = 'resolved') AS avg_resolution
+          FROM ticket
+        )
+        SELECT
+          total_tickets       AS "totalTickets",
+          open_tickets        AS "openTickets",
+          resolved_by_ai      AS "resolvedByAI",
+          CASE
+            WHEN total_resolved > 0
+            THEN ROUND((resolved_by_ai::DOUBLE PRECISION / total_resolved * 100)::NUMERIC, 1)::DOUBLE PRECISION
+            ELSE 0
+          END                 AS "aiResolutionRate",
+          COALESCE(ROUND(avg_resolution::NUMERIC), 0)::DOUBLE PRECISION AS "avgResolutionTime"
+        FROM counts;
+      $$;
+    `);
+    statsFnUpdated = true;
+  } catch (err) {
+    console.warn("Could not refresh get_ticket_stats function:", err);
+  }
+}
 
 interface TicketStatsRow {
   totalTickets: bigint;
@@ -18,6 +71,7 @@ interface TicketStatsRow {
 const router = Router();
 
 router.get("/stats", requireAuth, async (_req, res) => {
+  await ensureStatsFunction();
   const [row] = await prisma.$queryRaw<
     [TicketStatsRow]
   >`SELECT * FROM get_ticket_stats(${AI_AGENT_ID})`;
@@ -68,8 +122,6 @@ router.get("/", requireAuth, async (req, res) => {
 
   if (query.status) {
     where.status = query.status;
-  } else {
-    where.status = { in: ["open", "resolved", "closed"] };
   }
 
   if (query.category) {
@@ -103,6 +155,47 @@ router.get("/", requireAuth, async (req, res) => {
   const total = await prisma.ticket.count({ where });
 
   res.json({ tickets, total, page: query.page, pageSize: query.pageSize });
+});
+
+router.post("/book-email", requireAuth, async (req, res) => {
+  const data = validate(bookEmailTicketSchema, req.body, res);
+  if (!data) return;
+
+  const aiAgent = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { id: AI_AGENT_ID },
+        { id: "ai_agent" },
+        { id: "ai-agent" },
+        { role: "agent" },
+      ],
+    },
+  });
+
+  const ticket = await prisma.ticket.create({
+    data: {
+      subject: data.subject,
+      body: data.body,
+      senderName: data.senderName,
+      senderEmail: data.senderEmail,
+      assignedToId: aiAgent?.id ?? null,
+    },
+  });
+
+  // Run AI classification and AI auto-reply + email dispatch
+  await sendClassifyJob(ticket).catch((err) =>
+    console.error(`Failed to classify ticket ${ticket.id}:`, err)
+  );
+  await sendAutoResolveJob(ticket).catch((err) =>
+    console.error(`Failed to auto-resolve ticket ${ticket.id}:`, err)
+  );
+
+  const updated = await prisma.ticket.findUnique({
+    where: { id: ticket.id },
+    include: { assignedTo: { select: { id: true, name: true } } },
+  });
+
+  res.status(201).json({ ticket: updated ?? ticket });
 });
 
 router.get("/:id", requireAuth, async (req, res) => {

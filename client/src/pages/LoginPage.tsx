@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { signIn, useSession } from "@/lib/auth-client";
+import Sentry from "@/lib/sentry";
 import {
   Card,
   CardContent,
@@ -56,14 +57,32 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginFormData) => {
     setServerError("");
 
-    const { error } = await signIn.email(data);
+    try {
+      const { error } = await signIn.email(data);
 
-    if (error) {
-      setServerError(error.message ?? "Login failed");
-      return;
+      if (error) {
+        Sentry.captureMessage(`Login failed: ${error.message ?? "Invalid credentials"}`, {
+          level: "warning",
+          tags: { area: "auth", action: "login" },
+          extra: {
+            email: data.email,
+            message: error.message,
+            status: (error as { status?: number }).status,
+          },
+        });
+        setServerError(error.message ?? "Login failed");
+        return;
+      }
+
+      Sentry.setUser({ email: data.email });
+      navigate("/", { replace: true });
+    } catch (err) {
+      Sentry.captureException(err, {
+        tags: { area: "auth", action: "login" },
+        extra: { email: data.email },
+      });
+      setServerError("Unable to sign in. Please try again.");
     }
-
-    navigate("/", { replace: true });
   };
 
   return (

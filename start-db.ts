@@ -1,19 +1,12 @@
-import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import path from 'path';
-import fs from 'fs';
+import { openOrRecoverPGlite } from './db-helper';
 
 async function main() {
   console.log('⚡ Initializing embedded PostgreSQL (PGlite)...');
   const dbPath = path.resolve(import.meta.dirname, '.pgdata');
 
-  // Remove stale postmaster.pid if previous shutdown was interrupted
-  const pidFile = path.join(dbPath, 'postmaster.pid');
-  if (fs.existsSync(pidFile)) {
-    try { fs.unlinkSync(pidFile); } catch {}
-  }
-
-  const db = await PGlite.create(dbPath);
+  const db = await openOrRecoverPGlite(dbPath);
 
   const server = new PGLiteSocketServer({
     db,

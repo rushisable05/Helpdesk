@@ -4,8 +4,8 @@ import dotenv from 'dotenv';
 dotenv.config({ path: path.resolve(import.meta.dirname, '../server/.env') });
 
 const port = process.env.PORT || 3000;
-const secret = process.env.WEBHOOK_SECRET;
-const baseUrl = `http://localhost:${port}/api/webhooks/inbound-email?secret=${secret}`;
+const secret = process.env.WEBHOOK_SECRET || '';
+const baseUrl = `http://localhost:${port}/api/webhooks/inbound-email?secret=${encodeURIComponent(secret)}`;
 
 console.log(`\n====================================================`);
 console.log(`📨 Inbound Email Webhook Simulator`);
@@ -37,6 +37,7 @@ async function simulateInboundEmail() {
   try {
     const res1 = await fetch(baseUrl, {
       method: 'POST',
+      headers: { 'x-webhook-secret': secret },
       body: formData1,
     });
 
@@ -64,6 +65,7 @@ async function simulateInboundEmail() {
 
     const res2 = await fetch(baseUrl, {
       method: 'POST',
+      headers: { 'x-webhook-secret': secret },
       body: formData2,
     });
 

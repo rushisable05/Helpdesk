@@ -10,9 +10,9 @@ LANGUAGE sql STABLE
 AS $$
   WITH counts AS (
     SELECT
-      COUNT(*) FILTER (WHERE status IN ('open', 'resolved', 'closed'))  AS total_tickets,
-      COUNT(*) FILTER (WHERE status = 'open')                          AS open_tickets,
-      COUNT(*) FILTER (WHERE status = 'resolved' AND "assignedToId" = ai_agent_id) AS resolved_by_ai,
+      COUNT(*)                                                         AS total_tickets,
+      COUNT(*) FILTER (WHERE status IN ('new', 'open', 'processing'))  AS open_tickets,
+      COUNT(*) FILTER (WHERE status = 'resolved' AND "assignedToId" IN (ai_agent_id, 'ai_agent', 'ai-agent')) AS resolved_by_ai,
       COUNT(*) FILTER (WHERE status = 'resolved')                      AS total_resolved,
       AVG(EXTRACT(EPOCH FROM ("updatedAt" - "createdAt"))) FILTER (WHERE status = 'resolved') AS avg_resolution
     FROM ticket

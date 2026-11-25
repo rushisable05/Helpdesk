@@ -17,5 +17,26 @@ services:
       timeout: 5s
       retries: 5
 
+  app:
+    build:
+      context: .
+      args:
+        VITE_SENTRY_DSN: https://acdb5b73e843ff87d8cacf0dcd634f55@o4512490931093504.ingest.de.sentry.io/4512490939220048
+    image: helpdesk-app:latest
+    container_name: helpdesk-app
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./server/.env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/helpdesk?schema=public
+      BETTER_AUTH_URL: http://localhost:3000
+      TRUSTED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173
+
 volumes:
   pgdata:

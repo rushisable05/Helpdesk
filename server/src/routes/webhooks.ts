@@ -67,6 +67,18 @@ router.post("/inbound-email", requireWebhookSecret, upload.any(), async (req, re
     return;
   }
 
+  // Find AI agent or fallback to first available agent
+  const aiAgent = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { id: AI_AGENT_ID },
+        { id: "ai_agent" },
+        { id: "ai-agent" },
+        { role: "agent" },
+      ],
+    },
+  });
+
   const ticket = await prisma.ticket.create({
     data: {
       subject: normalizedSubject,
@@ -74,19 +86,20 @@ router.post("/inbound-email", requireWebhookSecret, upload.any(), async (req, re
       bodyHtml: data.bodyHtml ?? null,
       senderName: data.fromName,
       senderEmail: data.from,
-      assignedToId: AI_AGENT_ID,
+      assignedToId: aiAgent?.id ?? null,
     },
   });
 
-  res.status(201).json({ ticket });
-
-  sendClassifyJob(ticket).catch((error) =>
-    console.error(`Failed to enqueue classify job for ticket ${ticket.id}:`, error)
+  await sendClassifyJob(ticket).catch((error) =>
+    console.error(`Failed to classify ticket ${ticket.id}:`, error)
   );
 
-  sendAutoResolveJob(ticket).catch((error) =>
-    console.error(`Failed to enqueue auto-resolve job for ticket ${ticket.id}:`, error)
+  await sendAutoResolveJob(ticket).catch((error) =>
+    console.error(`Failed to auto-resolve ticket ${ticket.id}:`, error)
   );
+
+  const updated = await prisma.ticket.findUnique({ where: { id: ticket.id } });
+  res.status(201).json({ ticket: updated ?? ticket });
 });
 
 export default router;

@@ -7,7 +7,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Search } from "lucide-react";
-import { agentTicketStatuses, statusLabel } from "core/constants/ticket-status.ts";
+import { ticketStatuses, statusLabel } from "core/constants/ticket-status.ts";
 import type { TicketFilters } from "./TicketsPage";
 
 const ALL = "__all__";
@@ -44,7 +44,7 @@ export default function TicketsFilters({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>All statuses</SelectItem>
-          {agentTicketStatuses.map((s) => (
+          {ticketStatuses.map((s) => (
             <SelectItem key={s} value={s}>
               {statusLabel[s]}
             </SelectItem>

@@ -21,16 +21,37 @@ if (!process.env.BETTER_AUTH_SECRET) {
 
 const app = express();
 const port = process.env.PORT || 3000;
+const isProduction = process.env.NODE_ENV === "production";
 
-app.use(helmet());
+// Trust Railway / reverse proxy headers for secure cookies and rate limiting
+app.set("trust proxy", 1);
+
+const trustedOrigins = [
+  ...(process.env.TRUSTED_ORIGINS?.split(",").map((s) => s.trim()).filter(Boolean) ?? []),
+  ...(process.env.RAILWAY_PUBLIC_DOMAIN ? [`https://${process.env.RAILWAY_PUBLIC_DOMAIN}`] : []),
+];
+
+app.use(
+  helmet({
+    contentSecurityPolicy: isProduction
+      ? {
+          directives: {
+            defaultSrc: ["'self'"],
+            connectSrc: ["'self'", "https://*.sentry.io", "https://*.ingest.us.sentry.io", "https://*.ingest.de.sentry.io"],
+            imgSrc: ["'self'", "data:", "https:"],
+            scriptSrc: ["'self'", "'unsafe-inline'"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+          },
+        }
+      : false,
+  })
+);
 app.use(
   cors({
-    origin: process.env.TRUSTED_ORIGINS?.split(",") ?? [],
+    origin: trustedOrigins.length > 0 ? trustedOrigins : true,
     credentials: true,
   })
 );
-
-const isProduction = process.env.NODE_ENV === "production";
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -45,6 +66,15 @@ const authLimiter = rateLimit({
 // Better Auth parses its own request bodies
 // toNodeHandler returns a promise; must be caught for Express 5
 app.all("/api/auth/{*any}", authLimiter, (req, res, next) => {
+  res.on("finish", () => {
+    if (req.path.includes("sign-in") && res.statusCode >= 400) {
+      Sentry.captureMessage(`Backend login failed (HTTP ${res.statusCode})`, {
+        level: res.statusCode >= 500 ? "error" : "warning",
+        tags: { area: "auth", action: "sign-in" },
+        extra: { path: req.path, statusCode: res.statusCode, ip: req.ip },
+      });
+    }
+  });
   toNodeHandler(auth)(req, res).catch(next);
 });
 

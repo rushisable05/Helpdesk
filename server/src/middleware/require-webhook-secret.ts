@@ -10,7 +10,11 @@ export const requireWebhookSecret: RequestHandler = (req, res, next) => {
   const provided =
     req.headers["x-webhook-secret"] || req.query.secret;
 
-  if (provided !== secret) {
+  const matches =
+    provided === secret ||
+    (typeof provided === "string" && provided.replace(/ /g, "+") === secret);
+
+  if (!matches) {
     res.status(401).json({ error: "Invalid webhook secret" });
     return;
   }
