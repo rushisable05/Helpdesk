@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate, useNavigate, useSearchParams } from "react-router";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -156,6 +156,12 @@ export default function LoginPage() {
             </form>
           </CardContent>
         </Card>
+        <p className="text-center text-xs text-muted-foreground mt-5">
+          Customer support chahiye?{" "}
+          <Link to="/submit" className="text-primary hover:underline font-medium">
+            Submit a Support Ticket
+          </Link>
+        </p>
       </div>
     </div>
   );

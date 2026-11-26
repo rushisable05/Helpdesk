@@ -157,10 +157,7 @@ router.get("/", requireAuth, async (req, res) => {
   res.json({ tickets, total, page: query.page, pageSize: query.pageSize });
 });
 
-router.post("/book-email", requireAuth, async (req, res) => {
-  const data = validate(bookEmailTicketSchema, req.body, res);
-  if (!data) return;
-
+async function createAndAutoResolveTicket(data: z.infer<typeof bookEmailTicketSchema>) {
   const aiAgent = await prisma.user.findFirst({
     where: {
       OR: [
@@ -182,7 +179,6 @@ router.post("/book-email", requireAuth, async (req, res) => {
     },
   });
 
-  // Run AI classification and AI auto-reply + email dispatch
   await sendClassifyJob(ticket).catch((err) =>
     console.error(`Failed to classify ticket ${ticket.id}:`, err)
   );
@@ -192,10 +188,29 @@ router.post("/book-email", requireAuth, async (req, res) => {
 
   const updated = await prisma.ticket.findUnique({
     where: { id: ticket.id },
-    include: { assignedTo: { select: { id: true, name: true } } },
+    include: {
+      assignedTo: { select: { id: true, name: true } },
+      replies: { orderBy: { createdAt: "desc" }, take: 1 },
+    },
   });
 
-  res.status(201).json({ ticket: updated ?? ticket });
+  return updated ?? ticket;
+}
+
+router.post("/public-book", async (req, res) => {
+  const data = validate(bookEmailTicketSchema, req.body, res);
+  if (!data) return;
+
+  const ticket = await createAndAutoResolveTicket(data);
+  res.status(201).json({ ticket });
+});
+
+router.post("/book-email", requireAuth, async (req, res) => {
+  const data = validate(bookEmailTicketSchema, req.body, res);
+  if (!data) return;
+
+  const ticket = await createAndAutoResolveTicket(data);
+  res.status(201).json({ ticket });
 });
 
 router.get("/:id", requireAuth, async (req, res) => {

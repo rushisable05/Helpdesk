@@ -22,23 +22,11 @@ interface AutoResolveJobData {
   senderEmail: string;
 }
 
-export async function registerAutoResolveWorker(boss: PgBoss): Promise<void> {
-  await boss.createQueue(QUEUE_NAME, {
-    retryLimit: 3,
-    retryDelay: 30,
-    retryBackoff: true,
-  });
+export async function resolveTicketWithAI(data: AutoResolveJobData): Promise<string> {
+  const firstName = data.senderName.trim().split(/\s+/)[0] || "there";
+  let response: string | null = null;
 
-  await boss.work<AutoResolveJobData>(QUEUE_NAME, async (jobs) => {
-    const { ticketId, subject, body, senderName, senderEmail } = jobs[0]!.data;
-    const firstName = senderName.split(" ")[0];
-
-    await prisma.ticket.update({
-      where: { id: ticketId },
-      data: { status: "processing" },
-    });
-
-    let response: string;
+  if (process.env.OPENAI_API_KEY) {
     try {
       const { text } = await generateText({
         model: openai(process.env.OPENAI_MODEL || "gpt-4o-mini"),
@@ -51,59 +39,70 @@ export async function registerAutoResolveWorker(boss: PgBoss): Promise<void> {
           `- Address the customer by their first name: ${firstName}\n` +
           "- Use a warm, professional, and customer-friendly tone\n" +
           "- Format the response clearly with line breaks between paragraphs\n" +
-          "- Use bullet points or numbered lists when listing steps or multiple items\n" +
-          "- End with an offer to help further, e.g. 'If you have any other questions, feel free to reach out.'\n" +
-          "- Sign off with:\n\nBest regards,\nCode with Mosh Support\n\n" +
-          "If the knowledge base does NOT contain enough information to fully resolve the question, " +
-          'respond with exactly "ESCALATE" and nothing else.',
-        prompt: `Subject: ${subject}\n\nBody: ${body}`,
+          "- End with an offer to help further\n" +
+          "- Sign off with:\n\nBest regards,\nAI Support Assistant\nhttp://localhost:5173/",
+        prompt: `Subject: ${data.subject}\n\nBody: ${data.body}`,
       });
-      response = text.trim();
+      if (text.trim() && text.trim() !== "ESCALATE") {
+        response = text.trim();
+      }
+    } catch (error) {
+      console.warn(`OpenAI auto-resolve fallback to local AI for ticket ${data.ticketId}:`, error);
+    }
+  }
+
+  if (!response) {
+    response = generateLocalAIReply(data.subject, data.body, data.senderName);
+  }
+
+  const aiAgent = await prisma.user.findFirst({
+    where: { OR: [{ id: "ai-agent" }, { id: "ai_agent" }, { role: "agent" }] },
+  });
+
+  await prisma.$transaction([
+    prisma.reply.create({
+      data: {
+        body: response,
+        senderType: "agent",
+        ticketId: data.ticketId,
+        userId: aiAgent?.id ?? null,
+      },
+    }),
+    prisma.ticket.update({
+      where: { id: data.ticketId },
+      data: {
+        status: "resolved",
+        ...(aiAgent ? { assignedToId: aiAgent.id } : {}),
+      },
+    }),
+  ]);
+
+  await sendEmailJob({
+    to: data.senderEmail,
+    subject: `Re: ${data.subject}`,
+    body: response,
+  });
+
+  console.log(`🤖✉️ [AI Auto-Reply] Ticket #${data.ticketId} resolved and emailed to ${data.senderEmail}`);
+  return response;
+}
+
+export async function registerAutoResolveWorker(boss: PgBoss): Promise<void> {
+  await boss.createQueue(QUEUE_NAME, {
+    retryLimit: 3,
+    retryDelay: 30,
+    retryBackoff: true,
+  });
+
+  await boss.work<AutoResolveJobData>(QUEUE_NAME, async (jobs) => {
+    const jobData = jobs[0]!.data;
+    try {
+      await resolveTicketWithAI(jobData);
     } catch (error) {
       Sentry.captureException(error, {
-        tags: { queue: QUEUE_NAME, ticketId },
+        tags: { queue: QUEUE_NAME, ticketId: jobData.ticketId },
       });
-      console.error(`Auto-resolve AI call failed for ticket ${ticketId}:`, error);
-      await prisma.ticket.update({
-        where: { id: ticketId },
-        data: { status: "open", assignedToId: null },
-      });
-      return;
-    }
-
-    if (response === "ESCALATE") {
-      await prisma.ticket.update({
-        where: { id: ticketId },
-        data: { status: "open", assignedToId: null },
-      });
-    } else {
-      try {
-        await prisma.$transaction([
-          prisma.reply.create({
-            data: {
-              body: response,
-              senderType: "agent",
-              ticketId,
-              userId: null,
-            },
-          }),
-          prisma.ticket.update({
-            where: { id: ticketId },
-            data: { status: "resolved" },
-          }),
-        ]);
-
-        await sendEmailJob({
-          to: senderEmail,
-          subject: `Re: ${subject}`,
-          body: response,
-        });
-      } catch (error) {
-        Sentry.captureException(error, {
-          tags: { queue: QUEUE_NAME, ticketId },
-        });
-        throw error;
-      }
+      throw error;
     }
   });
 }
@@ -168,77 +167,19 @@ export async function sendAutoResolveJob(ticket: {
   senderName: string;
   senderEmail: string;
 }): Promise<void> {
+  const payload: AutoResolveJobData = {
+    ticketId: ticket.id,
+    subject: ticket.subject,
+    body: ticket.body,
+    senderName: ticket.senderName,
+    senderEmail: ticket.senderEmail,
+  };
+
   if (process.env.ENABLE_JOB_QUEUE === "true") {
     const { boss } = await import("./queue");
-    await boss.send(QUEUE_NAME, {
-      ticketId: ticket.id,
-      subject: ticket.subject,
-      body: ticket.body,
-      senderName: ticket.senderName,
-      senderEmail: ticket.senderEmail,
-    });
+    await boss.send(QUEUE_NAME, payload);
     return;
   }
 
-  const firstName = ticket.senderName.trim().split(/\s+/)[0] || "there";
-  let response: string | null = null;
-
-  if (process.env.OPENAI_API_KEY) {
-    try {
-      const { text } = await generateText({
-        model: openai(process.env.OPENAI_MODEL || "gpt-4o-mini"),
-        system:
-          "You are a friendly and professional support agent for Code with Mosh. " +
-          "Use ONLY the following knowledge base to answer the customer's question.\n\n" +
-          knowledgeBase +
-          "\n\n" +
-          "Guidelines for your response:\n" +
-          `- Address the customer by their first name: ${firstName}\n` +
-          "- Use a warm, professional, and customer-friendly tone\n" +
-          "- Format the response clearly with line breaks between paragraphs\n" +
-          "- End with an offer to help further\n" +
-          "- Sign off with:\n\nBest regards,\nAI Support Assistant\nhttp://localhost:5173/",
-        prompt: `Subject: ${ticket.subject}\n\nBody: ${ticket.body}`,
-      });
-      if (text.trim() && text.trim() !== "ESCALATE") {
-        response = text.trim();
-      }
-    } catch (error) {
-      console.warn(`OpenAI auto-resolve fallback to local AI for ticket ${ticket.id}:`, error);
-    }
-  }
-
-  if (!response) {
-    response = generateLocalAIReply(ticket.subject, ticket.body, ticket.senderName);
-  }
-
-  const aiAgent = await prisma.user.findFirst({
-    where: { OR: [{ id: "ai-agent" }, { id: "ai_agent" }, { role: "agent" }] },
-  });
-
-  await prisma.$transaction([
-    prisma.reply.create({
-      data: {
-        body: response,
-        senderType: "agent",
-        ticketId: ticket.id,
-        userId: aiAgent?.id ?? null,
-      },
-    }),
-    prisma.ticket.update({
-      where: { id: ticket.id },
-      data: {
-        status: "resolved",
-        ...(aiAgent ? { assignedToId: aiAgent.id } : {}),
-      },
-    }),
-  ]);
-
-  await sendEmailJob({
-    to: ticket.senderEmail,
-    subject: `Re: ${ticket.subject}`,
-    body: response,
-  });
-
-  console.log(`🤖✉️ [AI Auto-Reply] Ticket #${ticket.id} resolved and emailed to ${ticket.senderEmail}`);
+  await resolveTicketWithAI(payload);
 }

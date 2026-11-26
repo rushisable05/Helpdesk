@@ -3,6 +3,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import AdminRoute from "./components/AdminRoute";
 import Layout from "./components/Layout";
 import LoginPage from "./pages/LoginPage";
+import SubmitTicketPage from "./pages/SubmitTicketPage";
 import HomePage from "./pages/HomePage";
 import UsersPage from "./pages/UsersPage";
 import TicketsPage from "./pages/TicketsPage";
@@ -12,6 +13,7 @@ function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/submit" element={<SubmitTicketPage />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<Layout />}>
           <Route path="/" element={<HomePage />} />

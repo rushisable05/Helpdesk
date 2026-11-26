@@ -63,6 +63,17 @@ router.post("/inbound-email", requireWebhookSecret, upload.any(), async (req, re
         userId: null,
       },
     });
+
+    await sendAutoResolveJob({
+      id: existingTicket.id,
+      subject: existingTicket.subject,
+      body: data.body,
+      senderName: data.fromName,
+      senderEmail: data.from,
+    }).catch((error) =>
+      console.error(`Failed to auto-reply to follow-up on ticket ${existingTicket.id}:`, error)
+    );
+
     res.status(200).json({ ticket: existingTicket });
     return;
   }

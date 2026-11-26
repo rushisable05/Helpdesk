@@ -16,16 +16,14 @@ interface ClassifyJobData {
   body: string;
 }
 
-export async function registerClassifyWorker(boss: PgBoss): Promise<void> {
-  await boss.createQueue(QUEUE_NAME, {
-    retryLimit: 3,
-    retryDelay: 30,
-    retryBackoff: true,
-  });
+async function resolveCategory(
+  ticketId: number,
+  subject: string,
+  body: string
+): Promise<void> {
+  let category: TicketCategory = classifyLocally(subject, body);
 
-  await boss.work<ClassifyJobData>(QUEUE_NAME, async (jobs) => {
-    const { ticketId, subject, body } = jobs[0]!.data;
-
+  if (process.env.OPENAI_API_KEY) {
     try {
       const { text } = await generateText({
         model: openai(process.env.OPENAI_MODEL || "gpt-4o-mini"),
@@ -36,20 +34,33 @@ export async function registerClassifyWorker(boss: PgBoss): Promise<void> {
           "Return only the category value with no extra text.",
         prompt: `Subject: ${subject}\n\nBody: ${body}`,
       });
-
-      const category = text.trim() as TicketCategory;
-
-      if (!ticketCategories.includes(category)) {
-        console.warn(
-          `Invalid category "${text.trim()}" returned for ticket ${ticketId}`
-        );
-        return;
+      const candidate = text.trim() as TicketCategory;
+      if (ticketCategories.includes(candidate)) {
+        category = candidate;
       }
+    } catch (error) {
+      console.warn(`OpenAI classify fallback to local for ticket ${ticketId}:`, error);
+    }
+  }
 
-      await prisma.ticket.update({
-        where: { id: ticketId },
-        data: { category },
-      });
+  await prisma.ticket.update({
+    where: { id: ticketId },
+    data: { category },
+  });
+  console.log(`🏷️ [AI Classify] Ticket #${ticketId} classified as "${category}"`);
+}
+
+export async function registerClassifyWorker(boss: PgBoss): Promise<void> {
+  await boss.createQueue(QUEUE_NAME, {
+    retryLimit: 3,
+    retryDelay: 30,
+    retryBackoff: true,
+  });
+
+  await boss.work<ClassifyJobData>(QUEUE_NAME, async (jobs) => {
+    const { ticketId, subject, body } = jobs[0]!.data;
+    try {
+      await resolveCategory(ticketId, subject, body);
     } catch (error) {
       Sentry.captureException(error, {
         tags: { queue: QUEUE_NAME, ticketId },
@@ -85,30 +96,5 @@ export async function sendClassifyJob(ticket: {
     return;
   }
 
-  let category: TicketCategory = classifyLocally(ticket.subject, ticket.body);
-  if (process.env.OPENAI_API_KEY) {
-    try {
-      const { text } = await generateText({
-        model: openai(process.env.OPENAI_MODEL || "gpt-4o-mini"),
-        system:
-          "You are a support ticket classifier. " +
-          "Classify the ticket into exactly one of these categories: " +
-          `${ticketCategories.join(", ")}. ` +
-          "Return only the category value with no extra text.",
-        prompt: `Subject: ${ticket.subject}\n\nBody: ${ticket.body}`,
-      });
-      const candidate = text.trim() as TicketCategory;
-      if (ticketCategories.includes(candidate)) {
-        category = candidate;
-      }
-    } catch (error) {
-      console.warn(`OpenAI classify fallback to local for ticket ${ticket.id}:`, error);
-    }
-  }
-
-  await prisma.ticket.update({
-    where: { id: ticket.id },
-    data: { category },
-  });
-  console.log(`🏷️ [AI Classify] Ticket #${ticket.id} classified as "${category}"`);
+  await resolveCategory(ticket.id, ticket.subject, ticket.body);
 }
