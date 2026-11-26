@@ -22,8 +22,8 @@ export default function TicketsFilters({
   onChange,
 }: TicketsFiltersProps) {
   return (
-    <div className="flex items-center gap-4 mb-4">
-      <div className="relative flex-1 max-w-sm">
+    <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+      <div className="relative flex-1 w-full sm:max-w-sm">
         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
         <Input
           placeholder="Search tickets..."
@@ -39,7 +39,7 @@ export default function TicketsFilters({
           onChange({ ...filters, status: value === ALL ? undefined : (value as TicketFilters["status"]) })
         }
       >
-        <SelectTrigger className="w-[160px]">
+        <SelectTrigger className="w-full sm:w-[160px]">
           <SelectValue placeholder="All statuses" />
         </SelectTrigger>
         <SelectContent>
@@ -58,7 +58,7 @@ export default function TicketsFilters({
           onChange({ ...filters, category: value === ALL ? undefined : (value as TicketFilters["category"]) })
         }
       >
-        <SelectTrigger className="w-[200px]">
+        <SelectTrigger className="w-full sm:w-[200px]">
           <SelectValue placeholder="All categories" />
         </SelectTrigger>
         <SelectContent>

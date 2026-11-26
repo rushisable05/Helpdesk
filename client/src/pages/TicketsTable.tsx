@@ -222,7 +222,7 @@ export default function TicketsTable({ filters }: { filters: TicketFilters }) {
       </Table>
 
       {!isLoading && !error && (
-        <div className="flex items-center justify-between mt-4">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
           <p className="text-sm text-muted-foreground">
             {total === 0
               ? "No tickets"

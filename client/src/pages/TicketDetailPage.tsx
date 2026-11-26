@@ -39,8 +39,8 @@ export default function TicketDetailPage() {
       )}
 
       {ticket && (
-        <div className="grid grid-cols-[1fr_auto] gap-6">
-          <div className="space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6">
+          <div className="space-y-6 min-w-0">
             <TicketDetail ticket={ticket} />
 
             <TicketSummary ticket={ticket} />
